@@ -1,0 +1,21 @@
+id,name,age,salary,department,years_experience,performance_score,location
+1,John Smith,34,65000,Marketing,5,4.2,New York
+2,Sarah Johnson,29,72000,Engineering,3,4.5,San Francisco
+3,Michael Brown,42,95000,Management,12,4.8,Chicago
+4,Emily Davis,31,68000,Marketing,4,3.9,New York
+5,Robert Wilson,38,82000,Engineering,7,4.6,San Francisco
+6,Jennifer Thompson,45,110000,Management,15,4.9,Chicago
+7,David Miller,27,58000,Sales,2,3.5,Los Angeles
+8,Lisa Garcia,32,70000,Engineering,5,4.3,San Francisco
+9,James Rodriguez,37,75000,Marketing,8,4.1,New York
+10,Amanda Lee,41,92000,Engineering,10,4.7,San Francisco
+11,William Martinez,36,69000,Sales,6,3.8,Los Angeles
+12,Elizabeth Taylor,29,64000,Marketing,3,4.0,New York
+13,Christopher White,44,105000,Management,14,4.7,Chicago
+14,Jessica Adams,33,71000,Engineering,6,4.4,San Francisco
+15,Daniel Jackson,28,59000,Sales,2,3.6,Los Angeles
+16,Michelle Johnson,39,80000,Engineering,9,4.5,San Francisco
+17,Matthew Davis,31,67000,Marketing,4,4.1,New York
+18,Samantha Thompson,47,115000,Management,17,4.9,Chicago
+19,Kevin Miller,34,72000,Engineering,6,4.3,San Francisco
+20,Lauren Wilson,30,63000,Sales,3,3.7,Los Angeles 
