@@ -223,7 +223,7 @@ export default function DataPreview() {
                             <ExclamationTriangleIcon className="h-3.5 w-3.5 mr-1" />
                             {col.missing.toLocaleString()} 
                             <span className="text-xs text-gray-400 ml-1">
-                              ({col.missing_pct.toFixed(1)}%)
+                              ({col.missing_pct !== null && col.missing_pct !== undefined ? col.missing_pct.toFixed(1) : '0.0'}%)
                             </span>
                           </span>
                         ) : (
@@ -233,10 +233,10 @@ export default function DataPreview() {
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.unique.toLocaleString()}</td>
                       {col.min !== undefined && (
                         <>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.min?.toLocaleString()}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.max?.toLocaleString()}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.mean !== undefined ? col.mean.toFixed(2) : '-'}</td>
-                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.std !== undefined ? col.std.toFixed(2) : '-'}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.min !== null ? col.min?.toLocaleString() : '-'}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.max !== null ? col.max?.toLocaleString() : '-'}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.mean !== null && col.mean !== undefined ? col.mean.toFixed(2) : '-'}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{col.std !== null && col.std !== undefined ? col.std.toFixed(2) : '-'}</td>
                         </>
                       )}
                     </tr>

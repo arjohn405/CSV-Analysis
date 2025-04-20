@@ -409,6 +409,34 @@ async def get_correlation(file_id: str):
         print(error_message)
         raise HTTPException(status_code=500, detail=error_message)
 
+@app.delete("/files/{file_id}")
+async def delete_file(file_id: str):
+    history = load_upload_history()
+    file_info = next((item for item in history if item["file_id"] == file_id), None)
+    
+    if not file_info:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    file_path = f"uploads/{file_id}.csv"
+    encoding_path = f"uploads/{file_id}.encoding"
+    
+    try:
+        # Delete the file and encoding file if they exist
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        if os.path.exists(encoding_path):
+            os.remove(encoding_path)
+        
+        # Remove from history
+        history = [item for item in history if item["file_id"] != file_id]
+        save_upload_history(history)
+        
+        return {"message": f"File {file_info['filename']} deleted successfully"}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

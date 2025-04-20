@@ -119,6 +119,7 @@ var { g: global, __dirname } = __turbopack_context__;
 {
 __turbopack_context__.s({
     "default": (()=>__TURBOPACK__default__export__),
+    "deleteCSVFile": (()=>deleteCSVFile),
     "getColumnVisualization": (()=>getColumnVisualization),
     "getCorrelation": (()=>getCorrelation),
     "getFileMetadata": (()=>getFileMetadata),
@@ -242,6 +243,22 @@ const getCorrelation = async (fileId)=>{
             return response.data;
         } catch (error) {
             console.error(`Correlation request failed for file ID: ${fileId}`, error);
+            throw error;
+        }
+    });
+};
+const deleteCSVFile = async (fileId)=>{
+    return apiRequest(async ()=>{
+        if (!fileId) {
+            throw new Error('File ID is required for deletion');
+        }
+        const requestUrl = `${API_URL}/files/${fileId}`;
+        console.log(`Deleting file: ${requestUrl}`);
+        try {
+            await api.delete(requestUrl);
+            return;
+        } catch (error) {
+            console.error(`Delete request failed for file ID: ${fileId}`, error);
             throw error;
         }
     });

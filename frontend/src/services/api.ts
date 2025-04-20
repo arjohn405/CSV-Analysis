@@ -200,4 +200,24 @@ export const getCorrelation = async (fileId: string): Promise<CorrelationData> =
   });
 };
 
+// Delete CSV file
+export const deleteCSVFile = async (fileId: string): Promise<void> => {
+  return apiRequest(async () => {
+    if (!fileId) {
+      throw new Error('File ID is required for deletion');
+    }
+    
+    const requestUrl = `${API_URL}/files/${fileId}`;
+    console.log(`Deleting file: ${requestUrl}`);
+    
+    try {
+      await api.delete(requestUrl);
+      return;
+    } catch (error) {
+      console.error(`Delete request failed for file ID: ${fileId}`, error);
+      throw error;
+    }
+  });
+};
+
 export default api; 

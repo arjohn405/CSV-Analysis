@@ -33,7 +33,7 @@ import {
   ViewColumnsIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
-import { getFileStats, getFileMetadata } from '@/services/api';
+import { getFileStats, getFileMetadata, deleteCSVFile } from '@/services/api';
 
 // Import plotly dynamically to avoid SSR issues
 const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
@@ -55,6 +55,9 @@ export default function CSVDetailPage({ params }: { params: { id: string } }) {
   const [dataLoading, setDataLoading] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string>('');
 
   // Check if user is logged in
   useEffect(() => {
@@ -319,6 +322,57 @@ export default function CSVDetailPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!fileId) return;
+    
+    try {
+      setDeleteInProgress(true);
+      await deleteCSVFile(fileId);
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      setApiError('Failed to delete the file. Please try again.');
+    } finally {
+      setDeleteInProgress(false);
+      setIsDeleteModalOpen(false);
+    }
+  };
+
+  const handleCopy = () => {
+    // Create a text representation of the CSV file details
+    const textToCopy = `
+File Name: ${fileDetails.filename}
+Upload Date: ${formatDate(fileDetails.upload_time)}
+Size: ${fileDetails.size}
+Dimensions: ${fileDetails.row_count.toLocaleString()} rows × ${fileDetails.column_count} columns
+File ID: ${fileId}
+    `.trim();
+    
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        // Show a toast notification (simplified version)
+        alert('File details copied to clipboard');
+      })
+      .catch(err => {
+        console.error('Failed to copy: ', err);
+      });
+  };
+
+  const handleShare = () => {
+    // Generate a shareable URL for the current file
+    const shareableUrl = `${window.location.origin}/csv/${fileId}`;
+    setShareUrl(shareableUrl);
+    
+    // Copy URL to clipboard
+    navigator.clipboard.writeText(shareableUrl)
+      .then(() => {
+        alert('Shareable link copied to clipboard!');
+      })
+      .catch(err => {
+        console.error('Failed to copy share link: ', err);
+      });
+  };
+
   if (loading || !fileDetails) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -468,15 +522,24 @@ export default function CSVDetailPage({ params }: { params: { id: string } }) {
               </div>
             </div>
             <div className="flex space-x-2">
-              <button className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+              <button 
+                onClick={handleCopy}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              >
                 <DocumentDuplicateIcon className="h-4 w-4 mr-1" />
                 Copy
               </button>
-              <button className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+              <button 
+                onClick={handleShare}
+                className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+              >
                 <ShareIcon className="h-4 w-4 mr-1" />
                 Share
               </button>
-              <button className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50">
+              <button 
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="inline-flex items-center px-3 py-1.5 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+              >
                 <TrashIcon className="h-4 w-4 mr-1" />
                 Delete
               </button>
@@ -867,6 +930,50 @@ export default function CSVDetailPage({ params }: { params: { id: string } }) {
           </div>
         </div>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center text-red-600 mb-4">
+              <ExclamationTriangleIcon className="h-6 w-6 mr-2" />
+              <h3 className="text-lg font-medium">Delete File</h3>
+            </div>
+            <p className="mb-4 text-gray-700">
+              Are you sure you want to delete <span className="font-medium">{fileDetails.filename}</span>? This action cannot be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                disabled={deleteInProgress}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center"
+                disabled={deleteInProgress}
+              >
+                {deleteInProgress ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <TrashIcon className="h-4 w-4 mr-1" />
+                    Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
