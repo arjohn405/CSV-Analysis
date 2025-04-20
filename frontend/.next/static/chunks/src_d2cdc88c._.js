@@ -1633,9 +1633,19 @@ function CorrelationAnalysis() {
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
         "CorrelationAnalysis.useEffect": ()=>{
             if (selectedFileId) {
-                fetchCorrelationData(selectedFileId);
+                console.log("CorrelationAnalysis: Selected file ID:", selectedFileId);
+                // Add a small delay to ensure context is fully initialized
+                const timer = setTimeout({
+                    "CorrelationAnalysis.useEffect.timer": ()=>{
+                        fetchCorrelationData(selectedFileId);
+                    }
+                }["CorrelationAnalysis.useEffect.timer"], 500);
+                return ({
+                    "CorrelationAnalysis.useEffect": ()=>clearTimeout(timer)
+                })["CorrelationAnalysis.useEffect"];
             } else {
                 setCorrelationData(null);
+                console.log("CorrelationAnalysis: No file ID selected");
             }
         }
     }["CorrelationAnalysis.useEffect"], [
@@ -1645,7 +1655,23 @@ function CorrelationAnalysis() {
         try {
             setLoading(true);
             setError(null);
+            if (!fileId) {
+                console.error("Cannot fetch correlation data: No file ID provided");
+                setError("No file selected. Please select a CSV file first.");
+                setLoading(false);
+                return;
+            }
+            console.log(`Fetching correlation data for file ID: ${fileId}`);
             const data = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$api$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getCorrelation"])(fileId);
+            console.log("Correlation data received:", data);
+            // Validate correlation data structure
+            if (!data || !data.correlations && !data.message) {
+                console.error("Invalid correlation data received:", data);
+                setError("The correlation data received from the server is invalid.");
+                setCorrelationData(null);
+                setLoading(false);
+                return;
+            }
             setCorrelationData(data);
             // Extract insights from the correlation data
             if (data && data.correlations) {
@@ -1654,6 +1680,7 @@ function CorrelationAnalysis() {
         } catch (err) {
             console.error('Error fetching correlation data:', err);
             const errorMessage = err.userMessage || 'Failed to load correlation data. Please ensure the backend server is running.';
+            console.error(`Correlation API error: ${errorMessage}`);
             setError(errorMessage);
             setCorrelationData(null);
         } finally{
@@ -1670,56 +1697,65 @@ function CorrelationAnalysis() {
     };
     // Find insights from correlation data
     const findInsights = (correlations)=>{
-        if (!correlations) return [];
+        if (!correlations || !Array.isArray(correlations) || correlations.length === 0) {
+            console.log("No valid correlations data found for insights");
+            return [];
+        }
         const insights = [];
-        // Filter out self-correlations and get absolute values
-        const filteredCorrelations = correlations.filter((c)=>c.x !== c.y).map((c)=>({
-                ...c,
-                absCorrelation: Math.abs(c.correlation)
-            }));
-        // Find strong correlations (positive and negative)
-        const strongPositiveCorrelations = filteredCorrelations.filter((c)=>c.correlation > 0.7).sort((a, b)=>b.correlation - a.correlation).slice(0, 3);
-        const strongNegativeCorrelations = filteredCorrelations.filter((c)=>c.correlation < -0.7).sort((a, b)=>a.correlation - b.correlation).slice(0, 3);
-        // Add insights for strong positive correlations
-        if (strongPositiveCorrelations.length > 0) {
-            insights.push({
-                type: 'positive',
-                title: 'Strong Positive Correlations',
-                description: 'These variables tend to increase together:',
-                correlations: strongPositiveCorrelations
-            });
-        }
-        // Add insights for strong negative correlations
-        if (strongNegativeCorrelations.length > 0) {
-            insights.push({
-                type: 'negative',
-                title: 'Strong Negative Correlations',
-                description: 'As one variable increases, the other tends to decrease:',
-                correlations: strongNegativeCorrelations
-            });
-        }
-        // Find variables with no strong correlations
-        const weaklyCorrelatedVars = new Set();
-        // Extract all unique column names
-        const allColumns = new Set();
-        correlations.forEach((c)=>{
-            allColumns.add(c.x);
-            allColumns.add(c.y);
-        });
-        // Check each column to see if it has any strong correlations
-        allColumns.forEach((columnName)=>{
-            const hasStrongCorrelation = filteredCorrelations.some((c)=>(c.x === columnName || c.y === columnName) && Math.abs(c.correlation) > 0.4);
-            if (!hasStrongCorrelation) {
-                weaklyCorrelatedVars.add(columnName);
+        try {
+            // Filter out self-correlations and get absolute values
+            const filteredCorrelations = correlations.filter((c)=>c && c.x && c.y && c.x !== c.y && typeof c.correlation === 'number').map((c)=>({
+                    ...c,
+                    absCorrelation: Math.abs(c.correlation)
+                }));
+            // Find strong correlations (positive and negative)
+            const strongPositiveCorrelations = filteredCorrelations.filter((c)=>c.correlation > 0.7).sort((a, b)=>b.correlation - a.correlation).slice(0, 3);
+            const strongNegativeCorrelations = filteredCorrelations.filter((c)=>c.correlation < -0.7).sort((a, b)=>a.correlation - b.correlation).slice(0, 3);
+            // Add insights for strong positive correlations
+            if (strongPositiveCorrelations.length > 0) {
+                insights.push({
+                    type: 'positive',
+                    title: 'Strong Positive Correlations',
+                    description: 'These variables tend to increase together:',
+                    correlations: strongPositiveCorrelations
+                });
             }
-        });
-        if (weaklyCorrelatedVars.size > 0) {
-            insights.push({
-                type: 'weak',
-                title: 'Independent Variables',
-                description: 'These variables show little correlation with others:',
-                variables: Array.from(weaklyCorrelatedVars)
+            // Add insights for strong negative correlations
+            if (strongNegativeCorrelations.length > 0) {
+                insights.push({
+                    type: 'negative',
+                    title: 'Strong Negative Correlations',
+                    description: 'As one variable increases, the other tends to decrease:',
+                    correlations: strongNegativeCorrelations
+                });
+            }
+            // Find variables with no strong correlations
+            const weaklyCorrelatedVars = new Set();
+            // Extract all unique column names
+            const allColumns = new Set();
+            correlations.forEach((c)=>{
+                if (c && c.x && c.y) {
+                    allColumns.add(c.x);
+                    allColumns.add(c.y);
+                }
             });
+            // Check each column to see if it has any strong correlations
+            allColumns.forEach((columnName)=>{
+                const hasStrongCorrelation = filteredCorrelations.some((c)=>(c.x === columnName || c.y === columnName) && Math.abs(c.correlation) > 0.4);
+                if (!hasStrongCorrelation) {
+                    weaklyCorrelatedVars.add(columnName);
+                }
+            });
+            if (weaklyCorrelatedVars.size > 0) {
+                insights.push({
+                    type: 'weak',
+                    title: 'Independent Variables',
+                    description: 'These variables show little correlation with others:',
+                    variables: Array.from(weaklyCorrelatedVars)
+                });
+            }
+        } catch (error) {
+            console.error("Error generating insights:", error);
         }
         return insights;
     };
@@ -1734,33 +1770,33 @@ function CorrelationAnalysis() {
                             className: "h-8 bg-gray-100 rounded w-1/3"
                         }, void 0, false, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 145,
+                            lineNumber: 181,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                             className: "h-8 bg-gray-100 rounded w-32"
                         }, void 0, false, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 146,
+                            lineNumber: 182,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                    lineNumber: 144,
+                    lineNumber: 180,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                     className: "h-80 bg-gray-100 rounded w-full"
                 }, void 0, false, {
                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                    lineNumber: 148,
+                    lineNumber: 184,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-            lineNumber: 143,
+            lineNumber: 179,
             columnNumber: 7
         }, this);
     }
@@ -1774,7 +1810,7 @@ function CorrelationAnalysis() {
                         className: "h-12 w-12 text-red-500 mb-4"
                     }, void 0, false, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 157,
+                        lineNumber: 193,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
@@ -1782,7 +1818,7 @@ function CorrelationAnalysis() {
                         children: "Error Loading Correlation Data"
                     }, void 0, false, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 158,
+                        lineNumber: 194,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1790,36 +1826,36 @@ function CorrelationAnalysis() {
                         children: error
                     }, void 0, false, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 159,
+                        lineNumber: 195,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
-                        onClick: fetchCorrelationData,
+                        onClick: handleRefresh,
                         className: "px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 flex items-center",
                         children: [
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ArrowPathIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ArrowPathIcon$3e$__["ArrowPathIcon"], {
                                 className: "h-5 w-5 mr-1"
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 164,
+                                lineNumber: 200,
                                 columnNumber: 13
                             }, this),
                             "Try Again"
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 160,
+                        lineNumber: 196,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                lineNumber: 156,
+                lineNumber: 192,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-            lineNumber: 155,
+            lineNumber: 191,
             columnNumber: 7
         }, this);
     }
@@ -1834,7 +1870,7 @@ function CorrelationAnalysis() {
                     className: "h-5 w-5 mr-2 flex-shrink-0"
                 }, void 0, false, {
                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                    lineNumber: 179,
+                    lineNumber: 215,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1844,7 +1880,7 @@ function CorrelationAnalysis() {
                             children: "Correlation Analysis Unavailable"
                         }, void 0, false, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 181,
+                            lineNumber: 217,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1852,7 +1888,7 @@ function CorrelationAnalysis() {
                             children: correlationData.message
                         }, void 0, false, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 182,
+                            lineNumber: 218,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1860,19 +1896,83 @@ function CorrelationAnalysis() {
                             children: "Try uploading a CSV file with at least two numerical columns."
                         }, void 0, false, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 183,
+                            lineNumber: 219,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                    lineNumber: 180,
+                    lineNumber: 216,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-            lineNumber: 178,
+            lineNumber: 214,
+            columnNumber: 7
+        }, this);
+    }
+    // Check if visualization data exists
+    const hasVisualization = correlationData && correlationData.visualization && correlationData.visualization.data && correlationData.visualization.layout;
+    // Check if correlations data exists
+    const hasCorrelations = correlationData && Array.isArray(correlationData.correlations) && correlationData.correlations.length > 0;
+    if (!hasVisualization || !hasCorrelations) {
+        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+            className: "bg-yellow-50 border border-yellow-100 text-yellow-700 p-4 rounded-md flex items-start",
+            children: [
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ExclamationTriangleIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ExclamationTriangleIcon$3e$__["ExclamationTriangleIcon"], {
+                    className: "h-5 w-5 mr-2 flex-shrink-0"
+                }, void 0, false, {
+                    fileName: "[project]/src/components/CorrelationAnalysis.tsx",
+                    lineNumber: 239,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    children: [
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                            className: "font-medium",
+                            children: "Correlation Analysis Incomplete"
+                        }, void 0, false, {
+                            fileName: "[project]/src/components/CorrelationAnalysis.tsx",
+                            lineNumber: 241,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                            className: "text-sm mt-1",
+                            children: "The correlation data is incomplete or in an incorrect format."
+                        }, void 0, false, {
+                            fileName: "[project]/src/components/CorrelationAnalysis.tsx",
+                            lineNumber: 242,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                            onClick: handleRefresh,
+                            className: "mt-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded text-yellow-700 bg-yellow-100 hover:bg-yellow-200",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ArrowPathIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ArrowPathIcon$3e$__["ArrowPathIcon"], {
+                                    className: "h-3 w-3 mr-1"
+                                }, void 0, false, {
+                                    fileName: "[project]/src/components/CorrelationAnalysis.tsx",
+                                    lineNumber: 247,
+                                    columnNumber: 13
+                                }, this),
+                                "Retry"
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/src/components/CorrelationAnalysis.tsx",
+                            lineNumber: 243,
+                            columnNumber: 11
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/src/components/CorrelationAnalysis.tsx",
+                    lineNumber: 240,
+                    columnNumber: 9
+                }, this)
+            ]
+        }, void 0, true, {
+            fileName: "[project]/src/components/CorrelationAnalysis.tsx",
+            lineNumber: 238,
             columnNumber: 7
         }, this);
     }
@@ -1889,7 +1989,7 @@ function CorrelationAnalysis() {
                                 children: "Correlation Analysis"
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 193,
+                                lineNumber: 259,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1897,13 +1997,13 @@ function CorrelationAnalysis() {
                                 children: "Explore relationships between numerical variables"
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 194,
+                                lineNumber: 260,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 192,
+                        lineNumber: 258,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1917,12 +2017,12 @@ function CorrelationAnalysis() {
                                     className: "h-5 w-5"
                                 }, void 0, false, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 205,
+                                    lineNumber: 271,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 200,
+                                lineNumber: 266,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -1933,24 +2033,24 @@ function CorrelationAnalysis() {
                                     className: "h-5 w-5"
                                 }, void 0, false, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 212,
+                                    lineNumber: 278,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 207,
+                                lineNumber: 273,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 199,
+                        lineNumber: 265,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                lineNumber: 191,
+                lineNumber: 257,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1964,7 +2064,7 @@ function CorrelationAnalysis() {
                                 children: "Correlation Heatmap"
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 219,
+                                lineNumber: 285,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1978,12 +2078,12 @@ function CorrelationAnalysis() {
                                                 className: "h-5 w-5"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 223,
+                                                lineNumber: 289,
                                                 columnNumber: 17
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                            lineNumber: 222,
+                                            lineNumber: 288,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1991,24 +2091,24 @@ function CorrelationAnalysis() {
                                             children: "This heatmap shows the Pearson correlation coefficients between numerical columns. Values range from -1 (perfect negative correlation) to +1 (perfect positive correlation), with 0 indicating no linear correlation. Hover over cells to see exact values."
                                         }, void 0, false, {
                                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                            lineNumber: 225,
+                                            lineNumber: 291,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 221,
+                                    lineNumber: 287,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 220,
+                                lineNumber: 286,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 218,
+                        lineNumber: 284,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2023,10 +2123,21 @@ function CorrelationAnalysis() {
                                         autosize: true,
                                         height: 500,
                                         margin: {
-                                            l: 80,
-                                            r: 20,
-                                            t: 30,
-                                            b: 80
+                                            l: 100,
+                                            r: 40,
+                                            t: 40,
+                                            b: 100
+                                        },
+                                        font: {
+                                            size: 10
+                                        },
+                                        xaxis: {
+                                            ...correlationData.visualization.layout.xaxis,
+                                            tickangle: -45
+                                        },
+                                        yaxis: {
+                                            ...correlationData.visualization.layout.yaxis,
+                                            tickangle: 0
                                         }
                                     },
                                     config: {
@@ -2045,12 +2156,12 @@ function CorrelationAnalysis() {
                                     }
                                 }, void 0, false, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 236,
+                                    lineNumber: 302,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 235,
+                                lineNumber: 301,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2063,55 +2174,55 @@ function CorrelationAnalysis() {
                                                 className: "h-3 w-4 bg-blue-700"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 256,
+                                                lineNumber: 331,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "h-3 w-4 bg-blue-500"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 257,
+                                                lineNumber: 332,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "h-3 w-4 bg-blue-300"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 258,
+                                                lineNumber: 333,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "h-3 w-4 bg-gray-200"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 259,
+                                                lineNumber: 334,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "h-3 w-4 bg-red-300"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 260,
+                                                lineNumber: 335,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "h-3 w-4 bg-red-500"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 261,
+                                                lineNumber: 336,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "h-3 w-4 bg-red-700"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 262,
+                                                lineNumber: 337,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                        lineNumber: 255,
+                                        lineNumber: 330,
                                         columnNumber: 13
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2121,59 +2232,59 @@ function CorrelationAnalysis() {
                                                 children: "-1"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 265,
+                                                lineNumber: 340,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "mx-2 flex-1"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 266,
+                                                lineNumber: 341,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                 children: "0"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 267,
+                                                lineNumber: 342,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "mx-2 flex-1"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 268,
+                                                lineNumber: 343,
                                                 columnNumber: 15
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                 children: "+1"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 269,
+                                                lineNumber: 344,
                                                 columnNumber: 15
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                        lineNumber: 264,
+                                        lineNumber: 339,
                                         columnNumber: 13
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 254,
+                                lineNumber: 329,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 234,
+                        lineNumber: 300,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                lineNumber: 217,
+                lineNumber: 283,
                 columnNumber: 7
             }, this),
             insights.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2186,7 +2297,7 @@ function CorrelationAnalysis() {
                                 className: "h-5 w-5 text-yellow-500 mr-2"
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 279,
+                                lineNumber: 354,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
@@ -2194,13 +2305,13 @@ function CorrelationAnalysis() {
                                 children: "Insights"
                             }, void 0, false, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 280,
+                                lineNumber: 355,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 278,
+                        lineNumber: 353,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2215,12 +2326,12 @@ function CorrelationAnalysis() {
                                             children: insight.title
                                         }, void 0, false, {
                                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                            lineNumber: 302,
+                                            lineNumber: 377,
                                             columnNumber: 19
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                        lineNumber: 295,
+                                        lineNumber: 370,
                                         columnNumber: 17
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2231,10 +2342,10 @@ function CorrelationAnalysis() {
                                                 children: insight.description
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 305,
+                                                lineNumber: 380,
                                                 columnNumber: 19
                                             }, this),
-                                            insight.correlations && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            insight.correlations && Array.isArray(insight.correlations) && insight.correlations.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "space-y-2",
                                                 children: insight.correlations.map((corr, i)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                         className: "bg-white rounded-md border border-gray-100 p-2 text-sm",
@@ -2250,69 +2361,69 @@ function CorrelationAnalysis() {
                                                                     ]
                                                                 }, void 0, true, {
                                                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                                    lineNumber: 312,
+                                                                    lineNumber: 387,
                                                                     columnNumber: 29
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                                     className: `px-2 py-0.5 rounded-full text-xs font-medium ${corr.correlation > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`,
-                                                                    children: corr.correlation.toFixed(2)
+                                                                    children: typeof corr.correlation === 'number' ? corr.correlation.toFixed(2) : 'N/A'
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                                    lineNumber: 313,
+                                                                    lineNumber: 388,
                                                                     columnNumber: 29
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                            lineNumber: 311,
+                                                            lineNumber: 386,
                                                             columnNumber: 27
                                                         }, this)
                                                     }, i, false, {
                                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                        lineNumber: 310,
+                                                        lineNumber: 385,
                                                         columnNumber: 25
                                                     }, this))
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 308,
+                                                lineNumber: 383,
                                                 columnNumber: 21
                                             }, this),
-                                            insight.variables && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            insight.variables && Array.isArray(insight.variables) && insight.variables.length > 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 className: "flex flex-wrap gap-2",
                                                 children: insight.variables.map((variable, i)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                                         className: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800",
                                                         children: variable
                                                     }, i, false, {
                                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                        lineNumber: 329,
+                                                        lineNumber: 404,
                                                         columnNumber: 25
                                                     }, this))
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 327,
+                                                lineNumber: 402,
                                                 columnNumber: 21
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                        lineNumber: 304,
+                                        lineNumber: 379,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, idx, true, {
                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                lineNumber: 285,
+                                lineNumber: 360,
                                 columnNumber: 15
                             }, this))
                     }, void 0, false, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 283,
+                        lineNumber: 358,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                lineNumber: 277,
+                lineNumber: 352,
                 columnNumber: 9
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2327,7 +2438,7 @@ function CorrelationAnalysis() {
                                     className: "h-5 w-5 text-gray-500 mr-2"
                                 }, void 0, false, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 346,
+                                    lineNumber: 421,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
@@ -2335,18 +2446,18 @@ function CorrelationAnalysis() {
                                     children: "Strongest Correlations"
                                 }, void 0, false, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 347,
+                                    lineNumber: 422,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 345,
+                            lineNumber: 420,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 344,
+                        lineNumber: 419,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2364,7 +2475,7 @@ function CorrelationAnalysis() {
                                                 children: "Column 1"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 355,
+                                                lineNumber: 430,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -2373,7 +2484,7 @@ function CorrelationAnalysis() {
                                                 children: "Column 2"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 358,
+                                                lineNumber: 433,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -2382,7 +2493,7 @@ function CorrelationAnalysis() {
                                                 children: "Correlation"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 361,
+                                                lineNumber: 436,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -2391,7 +2502,7 @@ function CorrelationAnalysis() {
                                                 children: "Strength"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 364,
+                                                lineNumber: 439,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
@@ -2400,23 +2511,23 @@ function CorrelationAnalysis() {
                                                 children: "Relationship"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                lineNumber: 367,
+                                                lineNumber: 442,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                        lineNumber: 354,
+                                        lineNumber: 429,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 353,
+                                    lineNumber: 428,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
                                     className: "bg-white divide-y divide-gray-200",
-                                    children: correlationData.correlations.filter((c)=>c.x !== c.y) // Remove self-correlations
+                                    children: correlationData.correlations.filter((c)=>c && c.x && c.y && c.x !== c.y && typeof c.correlation === 'number') // Remove invalid or self-correlations
                                     .sort((a, b)=>Math.abs(b.correlation) - Math.abs(a.correlation)) // Sort by absolute value
                                     .slice(0, 8) // Take top 8
                                     .map((corr, index)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
@@ -2427,7 +2538,7 @@ function CorrelationAnalysis() {
                                                     children: corr.x
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                    lineNumber: 379,
+                                                    lineNumber: 454,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -2435,7 +2546,7 @@ function CorrelationAnalysis() {
                                                     children: corr.y
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                    lineNumber: 382,
+                                                    lineNumber: 457,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -2445,12 +2556,12 @@ function CorrelationAnalysis() {
                                                         children: corr.correlation.toFixed(3)
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                        lineNumber: 386,
+                                                        lineNumber: 461,
                                                         columnNumber: 23
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                    lineNumber: 385,
+                                                    lineNumber: 460,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -2460,12 +2571,12 @@ function CorrelationAnalysis() {
                                                         children: Math.abs(corr.correlation) > 0.7 ? 'Strong' : Math.abs(corr.correlation) > 0.4 ? 'Moderate' : 'Weak'
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                        lineNumber: 397,
+                                                        lineNumber: 472,
                                                         columnNumber: 23
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                    lineNumber: 396,
+                                                    lineNumber: 471,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
@@ -2473,35 +2584,35 @@ function CorrelationAnalysis() {
                                                     children: corr.correlation > 0 ? 'When one increases, the other increases' : 'When one increases, the other decreases'
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                                    lineNumber: 413,
+                                                    lineNumber: 488,
                                                     columnNumber: 21
                                                 }, this)
                                             ]
                                         }, index, true, {
                                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                            lineNumber: 378,
+                                            lineNumber: 453,
                                             columnNumber: 19
                                         }, this))
                                 }, void 0, false, {
                                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                                    lineNumber: 372,
+                                    lineNumber: 447,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 352,
+                            lineNumber: 427,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                        lineNumber: 351,
+                        lineNumber: 426,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                lineNumber: 343,
+                lineNumber: 418,
                 columnNumber: 7
             }, this),
             fullScreen && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2514,25 +2625,25 @@ function CorrelationAnalysis() {
                             className: "h-5 w-5 mr-2"
                         }, void 0, false, {
                             fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                            lineNumber: 431,
+                            lineNumber: 506,
                             columnNumber: 13
                         }, this),
                         "Exit Fullscreen"
                     ]
                 }, void 0, true, {
                     fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                    lineNumber: 427,
+                    lineNumber: 502,
                     columnNumber: 11
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-                lineNumber: 426,
+                lineNumber: 501,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/src/components/CorrelationAnalysis.tsx",
-        lineNumber: 190,
+        lineNumber: 256,
         columnNumber: 5
     }, this);
 }
@@ -2584,6 +2695,7 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$Squares2X2Icon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__Squares2X2Icon$3e$__ = __turbopack_context__.i("[project]/node_modules/@heroicons/react/24/outline/esm/Squares2X2Icon.js [app-client] (ecmascript) <export default as Squares2X2Icon>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ArrowsPointingOutIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ArrowsPointingOutIcon$3e$__ = __turbopack_context__.i("[project]/node_modules/@heroicons/react/24/outline/esm/ArrowsPointingOutIcon.js [app-client] (ecmascript) <export default as ArrowsPointingOutIcon>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ViewColumnsIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ViewColumnsIcon$3e$__ = __turbopack_context__.i("[project]/node_modules/@heroicons/react/24/outline/esm/ViewColumnsIcon.js [app-client] (ecmascript) <export default as ViewColumnsIcon>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ExclamationTriangleIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ExclamationTriangleIcon$3e$__ = __turbopack_context__.i("[project]/node_modules/@heroicons/react/24/outline/esm/ExclamationTriangleIcon.js [app-client] (ecmascript) <export default as ExclamationTriangleIcon>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$services$2f$api$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/src/services/api.ts [app-client] (ecmascript)");
 ;
 ;
@@ -2644,8 +2756,17 @@ function CSVDetailPage({ params }) {
             ];
             setUserName(names[Math.floor(Math.random() * names.length)]);
             // Set selected file ID based on the URL param
-            if (fileId && fileId !== selectedFileId) {
-                selectFile(fileId);
+            if (fileId) {
+                console.log(`CSV Detail Page: Setting file ID from URL parameter: ${fileId}`);
+                // Check if fileId is different from currently selected file
+                if (fileId !== selectedFileId) {
+                    console.log(`CSV Detail Page: Updating selected file ID from ${selectedFileId} to ${fileId}`);
+                    selectFile(fileId);
+                } else {
+                    console.log(`CSV Detail Page: File ID ${fileId} already selected`);
+                }
+            } else {
+                console.error("CSV Detail Page: No file ID in URL parameters");
             }
         }
     }["CSVDetailPage.useEffect"], [
@@ -2719,7 +2840,7 @@ function CSVDetailPage({ params }) {
                 className: "h-5 w-5 text-blue-500"
             }, void 0, false, {
                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                lineNumber: 139,
+                lineNumber: 150,
                 columnNumber: 13
             }, this),
             description: 'Percentage of missing values by column',
@@ -2766,7 +2887,7 @@ function CSVDetailPage({ params }) {
                     className: "h-5 w-5 text-purple-500"
                 }, void 0, false, {
                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                    lineNumber: 175,
+                    lineNumber: 186,
                     columnNumber: 15
                 }, this),
                 description: 'Box plots of numerical columns',
@@ -2808,7 +2929,7 @@ function CSVDetailPage({ params }) {
                     className: "h-5 w-5 text-green-500"
                 }, void 0, false, {
                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                    lineNumber: 213,
+                    lineNumber: 224,
                     columnNumber: 15
                 }, this),
                 description: 'Distribution of categories',
@@ -2864,7 +2985,7 @@ function CSVDetailPage({ params }) {
                     className: "h-5 w-5 text-red-500"
                 }, void 0, false, {
                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                    lineNumber: 259,
+                    lineNumber: 270,
                     columnNumber: 15
                 }, this),
                 description: 'Preview of correlations between numerical columns',
@@ -2927,12 +3048,12 @@ function CSVDetailPage({ params }) {
                 className: "animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"
             }, void 0, false, {
                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                lineNumber: 314,
+                lineNumber: 325,
                 columnNumber: 9
             }, this)
         }, void 0, false, {
             fileName: "[project]/src/app/csv/[id]/page.tsx",
-            lineNumber: 313,
+            lineNumber: 324,
             columnNumber: 7
         }, this);
     }
@@ -2954,7 +3075,7 @@ function CSVDetailPage({ params }) {
                                             className: "h-8 w-8 text-blue-600"
                                         }, void 0, false, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 326,
+                                            lineNumber: 337,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -2962,13 +3083,13 @@ function CSVDetailPage({ params }) {
                                             children: "CSV Analytics Dashboard"
                                         }, void 0, false, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 327,
+                                            lineNumber: 338,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 325,
+                                    lineNumber: 336,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -2984,7 +3105,7 @@ function CSVDetailPage({ params }) {
                                                         className: "h-8 w-8 text-gray-400"
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 336,
+                                                        lineNumber: 347,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -2992,7 +3113,7 @@ function CSVDetailPage({ params }) {
                                                         children: userName
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 337,
+                                                        lineNumber: 348,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("svg", {
@@ -3005,18 +3126,18 @@ function CSVDetailPage({ params }) {
                                                             clipRule: "evenodd"
                                                         }, void 0, false, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 339,
+                                                            lineNumber: 350,
                                                             columnNumber: 23
                                                         }, this)
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 338,
+                                                        lineNumber: 349,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 332,
+                                                lineNumber: 343,
                                                 columnNumber: 19
                                             }, this),
                                             isMenuOpen && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3035,14 +3156,14 @@ function CSVDetailPage({ params }) {
                                                                     className: "h-4 w-4 mr-2"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 347,
+                                                                    lineNumber: 358,
                                                                     columnNumber: 27
                                                                 }, this),
                                                                 "Home"
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 346,
+                                                            lineNumber: 357,
                                                             columnNumber: 25
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3053,52 +3174,52 @@ function CSVDetailPage({ params }) {
                                                                     className: "h-4 w-4 mr-2"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 354,
+                                                                    lineNumber: 365,
                                                                     columnNumber: 27
                                                                 }, this),
                                                                 "Sign out"
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 350,
+                                                            lineNumber: 361,
                                                             columnNumber: 25
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 345,
+                                                    lineNumber: 356,
                                                     columnNumber: 23
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 344,
+                                                lineNumber: 355,
                                                 columnNumber: 21
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 331,
+                                        lineNumber: 342,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 330,
+                                    lineNumber: 341,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                            lineNumber: 324,
+                            lineNumber: 335,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                        lineNumber: 323,
+                        lineNumber: 334,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                    lineNumber: 322,
+                    lineNumber: 333,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
@@ -3122,12 +3243,12 @@ function CSVDetailPage({ params }) {
                                             d: "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                         }, void 0, false, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 369,
+                                            lineNumber: 380,
                                             columnNumber: 17
                                         }, this)
                                     }, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 368,
+                                        lineNumber: 379,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -3135,13 +3256,13 @@ function CSVDetailPage({ params }) {
                                         children: "Connection Error"
                                     }, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 371,
+                                        lineNumber: 382,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                lineNumber: 367,
+                                lineNumber: 378,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3149,7 +3270,7 @@ function CSVDetailPage({ params }) {
                                 children: apiError
                             }, void 0, false, {
                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                lineNumber: 373,
+                                lineNumber: 384,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3161,7 +3282,7 @@ function CSVDetailPage({ params }) {
                                         children: "Try Again"
                                     }, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 375,
+                                        lineNumber: 386,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
@@ -3170,30 +3291,30 @@ function CSVDetailPage({ params }) {
                                         children: "Return to Dashboard"
                                     }, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 381,
+                                        lineNumber: 392,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                lineNumber: 374,
+                                lineNumber: 385,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                        lineNumber: 366,
+                        lineNumber: 377,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                    lineNumber: 365,
+                    lineNumber: 376,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/src/app/csv/[id]/page.tsx",
-            lineNumber: 321,
+            lineNumber: 332,
             columnNumber: 7
         }, this);
     }
@@ -3214,7 +3335,7 @@ function CSVDetailPage({ params }) {
                                         className: "h-8 w-8 text-blue-600"
                                     }, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 400,
+                                        lineNumber: 411,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -3222,13 +3343,13 @@ function CSVDetailPage({ params }) {
                                         children: "CSV Analytics Dashboard"
                                     }, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 401,
+                                        lineNumber: 412,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                lineNumber: 399,
+                                lineNumber: 410,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3244,7 +3365,7 @@ function CSVDetailPage({ params }) {
                                                     className: "h-8 w-8 text-gray-400"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 410,
+                                                    lineNumber: 421,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3252,7 +3373,7 @@ function CSVDetailPage({ params }) {
                                                     children: userName
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 411,
+                                                    lineNumber: 422,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("svg", {
@@ -3265,18 +3386,18 @@ function CSVDetailPage({ params }) {
                                                         clipRule: "evenodd"
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 413,
+                                                        lineNumber: 424,
                                                         columnNumber: 21
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 412,
+                                                    lineNumber: 423,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 406,
+                                            lineNumber: 417,
                                             columnNumber: 17
                                         }, this),
                                         isMenuOpen && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3295,14 +3416,14 @@ function CSVDetailPage({ params }) {
                                                                 className: "h-4 w-4 mr-2"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                lineNumber: 421,
+                                                                lineNumber: 432,
                                                                 columnNumber: 25
                                                             }, this),
                                                             "Home"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 420,
+                                                        lineNumber: 431,
                                                         columnNumber: 23
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3313,52 +3434,52 @@ function CSVDetailPage({ params }) {
                                                                 className: "h-4 w-4 mr-2"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                lineNumber: 428,
+                                                                lineNumber: 439,
                                                                 columnNumber: 25
                                                             }, this),
                                                             "Sign out"
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 424,
+                                                        lineNumber: 435,
                                                         columnNumber: 23
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 419,
+                                                lineNumber: 430,
                                                 columnNumber: 21
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 418,
+                                            lineNumber: 429,
                                             columnNumber: 19
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 405,
+                                    lineNumber: 416,
                                     columnNumber: 15
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                lineNumber: 404,
+                                lineNumber: 415,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                        lineNumber: 398,
+                        lineNumber: 409,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                    lineNumber: 397,
+                    lineNumber: 408,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                lineNumber: 396,
+                lineNumber: 407,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
@@ -3380,14 +3501,14 @@ function CSVDetailPage({ params }) {
                                                     className: "h-4 w-4 mr-1"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 449,
+                                                    lineNumber: 460,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Back to Dashboard"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 445,
+                                            lineNumber: 456,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3397,27 +3518,28 @@ function CSVDetailPage({ params }) {
                                                     className: "h-6 w-6 text-blue-600 mr-2"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 453,
+                                                    lineNumber: 464,
                                                     columnNumber: 17
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
-                                                    className: "text-2xl font-bold text-gray-900",
+                                                    className: "text-2xl font-bold text-gray-900 truncate max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg",
+                                                    title: fileDetails.filename,
                                                     children: fileDetails.filename
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 454,
+                                                    lineNumber: 465,
                                                     columnNumber: 17
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 452,
+                                            lineNumber: 463,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 444,
+                                    lineNumber: 455,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3430,14 +3552,14 @@ function CSVDetailPage({ params }) {
                                                     className: "h-4 w-4 mr-1"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 459,
+                                                    lineNumber: 472,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Copy"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 458,
+                                            lineNumber: 471,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3447,14 +3569,14 @@ function CSVDetailPage({ params }) {
                                                     className: "h-4 w-4 mr-1"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 463,
+                                                    lineNumber: 476,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Share"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 462,
+                                            lineNumber: 475,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3464,26 +3586,26 @@ function CSVDetailPage({ params }) {
                                                     className: "h-4 w-4 mr-1"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 467,
+                                                    lineNumber: 480,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Delete"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 466,
+                                            lineNumber: 479,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 457,
+                                    lineNumber: 470,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                            lineNumber: 443,
+                            lineNumber: 454,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3498,7 +3620,7 @@ function CSVDetailPage({ params }) {
                                                 className: "h-5 w-5 text-gray-500 mr-2"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 477,
+                                                lineNumber: 490,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
@@ -3506,24 +3628,24 @@ function CSVDetailPage({ params }) {
                                                 children: "File Information"
                                             }, void 0, false, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 478,
+                                                lineNumber: 491,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 476,
+                                        lineNumber: 489,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 475,
+                                    lineNumber: 488,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "p-5",
                                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                        className: "grid grid-cols-2 md:grid-cols-4 gap-6",
+                                        className: "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6",
                                         children: [
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                 children: [
@@ -3532,21 +3654,22 @@ function CSVDetailPage({ params }) {
                                                         children: "File Name"
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 484,
+                                                        lineNumber: 497,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                        className: "mt-1 text-sm text-gray-900",
+                                                        className: "mt-1 text-sm text-gray-900 truncate",
+                                                        title: fileDetails.filename,
                                                         children: fileDetails.filename
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 485,
+                                                        lineNumber: 498,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 483,
+                                                lineNumber: 496,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3556,30 +3679,38 @@ function CSVDetailPage({ params }) {
                                                         children: "Upload Date"
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 488,
+                                                        lineNumber: 503,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                        className: "mt-1 text-sm text-gray-900 flex items-center",
+                                                        className: "mt-1 text-sm text-gray-900 flex items-center truncate",
+                                                        title: formatDate(fileDetails.upload_time),
                                                         children: [
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ClockIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ClockIcon$3e$__["ClockIcon"], {
-                                                                className: "h-4 w-4 mr-1 text-gray-400"
+                                                                className: "h-4 w-4 mr-1 flex-shrink-0 text-gray-400"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                lineNumber: 490,
+                                                                lineNumber: 505,
                                                                 columnNumber: 21
                                                             }, this),
-                                                            formatDate(fileDetails.upload_time)
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                className: "truncate",
+                                                                children: formatDate(fileDetails.upload_time)
+                                                            }, void 0, false, {
+                                                                fileName: "[project]/src/app/csv/[id]/page.tsx",
+                                                                lineNumber: 506,
+                                                                columnNumber: 21
+                                                            }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 489,
+                                                        lineNumber: 504,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 487,
+                                                lineNumber: 502,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3589,21 +3720,22 @@ function CSVDetailPage({ params }) {
                                                         children: "File Size"
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 495,
+                                                        lineNumber: 510,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                        className: "mt-1 text-sm text-gray-900",
+                                                        className: "mt-1 text-sm text-gray-900 truncate",
+                                                        title: fileDetails.size,
                                                         children: fileDetails.size
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 496,
+                                                        lineNumber: 511,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 494,
+                                                lineNumber: 509,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3613,50 +3745,60 @@ function CSVDetailPage({ params }) {
                                                         children: "Dimensions"
                                                     }, void 0, false, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 499,
+                                                        lineNumber: 516,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                        className: "mt-1 text-sm text-gray-900 flex items-center",
+                                                        className: "mt-1 text-sm text-gray-900 flex items-center truncate",
+                                                        title: `${fileDetails.row_count.toLocaleString()} rows × ${fileDetails.column_count} columns`,
                                                         children: [
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ViewColumnsIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ViewColumnsIcon$3e$__["ViewColumnsIcon"], {
-                                                                className: "h-4 w-4 mr-1 text-gray-400"
+                                                                className: "h-4 w-4 mr-1 flex-shrink-0 text-gray-400"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                lineNumber: 501,
+                                                                lineNumber: 519,
                                                                 columnNumber: 21
                                                             }, this),
-                                                            fileDetails.row_count.toLocaleString(),
-                                                            " rows × ",
-                                                            fileDetails.column_count,
-                                                            " columns"
+                                                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                className: "truncate",
+                                                                children: [
+                                                                    fileDetails.row_count.toLocaleString(),
+                                                                    " rows × ",
+                                                                    fileDetails.column_count,
+                                                                    " columns"
+                                                                ]
+                                                            }, void 0, true, {
+                                                                fileName: "[project]/src/app/csv/[id]/page.tsx",
+                                                                lineNumber: 520,
+                                                                columnNumber: 21
+                                                            }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                        lineNumber: 500,
+                                                        lineNumber: 517,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                lineNumber: 498,
+                                                lineNumber: 515,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 482,
+                                        lineNumber: 495,
                                         columnNumber: 15
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 481,
+                                    lineNumber: 494,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                            lineNumber: 474,
+                            lineNumber: 487,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3673,14 +3815,14 @@ function CSVDetailPage({ params }) {
                                                     className: "h-5 w-5 mr-2"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 520,
+                                                    lineNumber: 538,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Dashboard"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 512,
+                                            lineNumber: 530,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3691,14 +3833,14 @@ function CSVDetailPage({ params }) {
                                                     className: "h-5 w-5 mr-2"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 531,
+                                                    lineNumber: 549,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Data Preview"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 523,
+                                            lineNumber: 541,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3709,14 +3851,14 @@ function CSVDetailPage({ params }) {
                                                     className: "h-5 w-5 mr-2"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 542,
+                                                    lineNumber: 560,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Visualizations"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 534,
+                                            lineNumber: 552,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3727,20 +3869,20 @@ function CSVDetailPage({ params }) {
                                                     className: "h-5 w-5 mr-2"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 553,
+                                                    lineNumber: 571,
                                                     columnNumber: 17
                                                 }, this),
                                                 "Correlation"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 545,
+                                            lineNumber: 563,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 511,
+                                    lineNumber: 529,
                                     columnNumber: 13
                                 }, this),
                                 activeTab === 'dashboard' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3754,7 +3896,7 @@ function CSVDetailPage({ params }) {
                                                     children: "Data Summary Dashboard"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 561,
+                                                    lineNumber: 579,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3762,13 +3904,13 @@ function CSVDetailPage({ params }) {
                                                     children: "Quick overview of key metrics and insights from your CSV file"
                                                 }, void 0, false, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 562,
+                                                    lineNumber: 580,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 560,
+                                            lineNumber: 578,
                                             columnNumber: 17
                                         }, this),
                                         dataLoading ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3787,12 +3929,12 @@ function CSVDetailPage({ params }) {
                                                                 className: "h-6 bg-gray-200 rounded w-1/3"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                lineNumber: 572,
+                                                                lineNumber: 590,
                                                                 columnNumber: 27
                                                             }, this)
                                                         }, void 0, false, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 571,
+                                                            lineNumber: 589,
                                                             columnNumber: 25
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3801,23 +3943,23 @@ function CSVDetailPage({ params }) {
                                                                 className: "h-40 bg-gray-100 rounded"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                lineNumber: 575,
+                                                                lineNumber: 593,
                                                                 columnNumber: 27
                                                             }, this)
                                                         }, void 0, false, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 574,
+                                                            lineNumber: 592,
                                                             columnNumber: 25
                                                         }, this)
                                                     ]
                                                 }, i, true, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 570,
+                                                    lineNumber: 588,
                                                     columnNumber: 23
                                                 }, this))
                                         }, void 0, false, {
                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                            lineNumber: 568,
+                                            lineNumber: 586,
                                             columnNumber: 19
                                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Fragment"], {
                                             children: [
@@ -3832,7 +3974,7 @@ function CSVDetailPage({ params }) {
                                                                     children: "Data Coverage"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 585,
+                                                                    lineNumber: 603,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3843,7 +3985,7 @@ function CSVDetailPage({ params }) {
                                                                             children: stats && stats.columns ? `${(100 - stats.columns.reduce((sum, col)=>sum + col.missing_pct, 0) / stats.columns.length).toFixed(1)}%` : '—'
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                            lineNumber: 587,
+                                                                            lineNumber: 605,
                                                                             columnNumber: 27
                                                                         }, this),
                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3851,13 +3993,13 @@ function CSVDetailPage({ params }) {
                                                                             children: "overall completeness"
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                            lineNumber: 592,
+                                                                            lineNumber: 610,
                                                                             columnNumber: 27
                                                                         }, this)
                                                                     ]
                                                                 }, void 0, true, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 586,
+                                                                    lineNumber: 604,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3865,13 +4007,13 @@ function CSVDetailPage({ params }) {
                                                                     children: stats && stats.columns && stats.columns.some((col)=>col.missing > 0) ? `${stats.columns.filter((col)=>col.missing > 0).length} columns have missing values` : 'No missing values detected'
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 594,
+                                                                    lineNumber: 612,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 584,
+                                                            lineNumber: 602,
                                                             columnNumber: 23
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3882,7 +4024,7 @@ function CSVDetailPage({ params }) {
                                                                     children: "Column Types"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 603,
+                                                                    lineNumber: 621,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3896,7 +4038,7 @@ function CSVDetailPage({ params }) {
                                                                                         className: "inline-block w-3 h-3 bg-green-500 rounded-full mr-1"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 608,
+                                                                                        lineNumber: 626,
                                                                                         columnNumber: 33
                                                                                     }, this),
                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3907,13 +4049,13 @@ function CSVDetailPage({ params }) {
                                                                                         ]
                                                                                     }, void 0, true, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 609,
+                                                                                        lineNumber: 627,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 ]
                                                                             }, void 0, true, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 607,
+                                                                                lineNumber: 625,
                                                                                 columnNumber: 31
                                                                             }, this),
                                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3923,7 +4065,7 @@ function CSVDetailPage({ params }) {
                                                                                         className: "inline-block w-3 h-3 bg-indigo-500 rounded-full mr-1"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 614,
+                                                                                        lineNumber: 632,
                                                                                         columnNumber: 33
                                                                                     }, this),
                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3934,20 +4076,20 @@ function CSVDetailPage({ params }) {
                                                                                         ]
                                                                                     }, void 0, true, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 615,
+                                                                                        lineNumber: 633,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 ]
                                                                             }, void 0, true, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 613,
+                                                                                lineNumber: 631,
                                                                                 columnNumber: 31
                                                                             }, this)
                                                                         ]
                                                                     }, void 0, true) : '—'
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 604,
+                                                                    lineNumber: 622,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3958,13 +4100,13 @@ function CSVDetailPage({ params }) {
                                                                     ]
                                                                 }, void 0, true, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 622,
+                                                                    lineNumber: 640,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 602,
+                                                            lineNumber: 620,
                                                             columnNumber: 23
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3975,7 +4117,7 @@ function CSVDetailPage({ params }) {
                                                                     children: "Unique Values"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 628,
+                                                                    lineNumber: 646,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3991,7 +4133,7 @@ function CSVDetailPage({ params }) {
                                                                                         children: "Most Unique"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 633,
+                                                                                        lineNumber: 651,
                                                                                         columnNumber: 33
                                                                                     }, this),
                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3999,13 +4141,13 @@ function CSVDetailPage({ params }) {
                                                                                         children: stats.columns.reduce((max, col)=>Math.max(max, col.unique), 0).toLocaleString()
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 634,
+                                                                                        lineNumber: 652,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 ]
                                                                             }, void 0, true, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 632,
+                                                                                lineNumber: 650,
                                                                                 columnNumber: 31
                                                                             }, this),
                                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4018,7 +4160,7 @@ function CSVDetailPage({ params }) {
                                                                                         }).name
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 639,
+                                                                                        lineNumber: 657,
                                                                                         columnNumber: 33
                                                                                     }, this),
                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -4026,36 +4168,36 @@ function CSVDetailPage({ params }) {
                                                                                         children: "values"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 644,
+                                                                                        lineNumber: 662,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 ]
                                                                             }, void 0, true, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 638,
+                                                                                lineNumber: 656,
                                                                                 columnNumber: 31
                                                                             }, this)
                                                                         ]
                                                                     }, void 0, true, {
                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                        lineNumber: 631,
+                                                                        lineNumber: 649,
                                                                         columnNumber: 29
                                                                     }, this) : '—'
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 629,
+                                                                    lineNumber: 647,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 627,
+                                                            lineNumber: 645,
                                                             columnNumber: 23
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 583,
+                                                    lineNumber: 601,
                                                     columnNumber: 21
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4076,7 +4218,7 @@ function CSVDetailPage({ params }) {
                                                                                         children: chart.title
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 664,
+                                                                                        lineNumber: 682,
                                                                                         columnNumber: 31
                                                                                     }, this),
                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -4084,13 +4226,13 @@ function CSVDetailPage({ params }) {
                                                                                         children: chart.description
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 665,
+                                                                                        lineNumber: 683,
                                                                                         columnNumber: 31
                                                                                     }, this)
                                                                                 ]
                                                                             }, void 0, true, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 662,
+                                                                                lineNumber: 680,
                                                                                 columnNumber: 29
                                                                             }, this),
                                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4103,23 +4245,23 @@ function CSVDetailPage({ params }) {
                                                                                         className: "h-4 w-4 text-gray-500"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 673,
+                                                                                        lineNumber: 691,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 }, void 0, false, {
                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                    lineNumber: 668,
+                                                                                    lineNumber: 686,
                                                                                     columnNumber: 31
                                                                                 }, this)
                                                                             }, void 0, false, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 667,
+                                                                                lineNumber: 685,
                                                                                 columnNumber: 29
                                                                             }, this)
                                                                         ]
                                                                     }, void 0, true, {
                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                        lineNumber: 661,
+                                                                        lineNumber: 679,
                                                                         columnNumber: 27
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4153,18 +4295,18 @@ function CSVDetailPage({ params }) {
                                                                             }
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                            lineNumber: 678,
+                                                                            lineNumber: 696,
                                                                             columnNumber: 29
                                                                         }, this)
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                        lineNumber: 677,
+                                                                        lineNumber: 695,
                                                                         columnNumber: 27
                                                                     }, this)
                                                                 ]
                                                             }, chart.id, true, {
                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                lineNumber: 655,
+                                                                lineNumber: 673,
                                                                 columnNumber: 25
                                                             }, this)),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4175,7 +4317,7 @@ function CSVDetailPage({ params }) {
                                                                     children: "Recommendations"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 705,
+                                                                    lineNumber: 723,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
@@ -4186,16 +4328,16 @@ function CSVDetailPage({ params }) {
                                                                             children: [
                                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                                                                     className: "flex-shrink-0 p-1 bg-yellow-100 rounded-full",
-                                                                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(ExclamationTriangleIcon, {
+                                                                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$heroicons$2f$react$2f$24$2f$outline$2f$esm$2f$ExclamationTriangleIcon$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ExclamationTriangleIcon$3e$__["ExclamationTriangleIcon"], {
                                                                                         className: "h-4 w-4 text-yellow-600"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 710,
+                                                                                        lineNumber: 728,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 }, void 0, false, {
                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                    lineNumber: 709,
+                                                                                    lineNumber: 727,
                                                                                     columnNumber: 31
                                                                                 }, this),
                                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4210,24 +4352,24 @@ function CSVDetailPage({ params }) {
                                                                                                 children: stats.columns.filter((col)=>col.missing_pct > 20)[0].name
                                                                                             }, void 0, false, {
                                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                lineNumber: 715,
+                                                                                                lineNumber: 733,
                                                                                                 columnNumber: 35
                                                                                             }, this)
                                                                                         ]
                                                                                     }, void 0, true, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 713,
+                                                                                        lineNumber: 731,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 }, void 0, false, {
                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                    lineNumber: 712,
+                                                                                    lineNumber: 730,
                                                                                     columnNumber: 31
                                                                                 }, this)
                                                                             ]
                                                                         }, void 0, true, {
                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                            lineNumber: 708,
+                                                                            lineNumber: 726,
                                                                             columnNumber: 29
                                                                         }, this),
                                                                         stats && stats.columns && stats.columns.filter((col)=>col.dtype.includes('int') || col.dtype.includes('float')).length >= 2 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -4239,12 +4381,12 @@ function CSVDetailPage({ params }) {
                                                                                         className: "h-4 w-4 text-blue-600"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 724,
+                                                                                        lineNumber: 742,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 }, void 0, false, {
                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                    lineNumber: 723,
+                                                                                    lineNumber: 741,
                                                                                     columnNumber: 31
                                                                                 }, this),
                                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4255,7 +4397,7 @@ function CSVDetailPage({ params }) {
                                                                                             children: "Explore correlations between numerical columns"
                                                                                         }, void 0, false, {
                                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                            lineNumber: 727,
+                                                                                            lineNumber: 745,
                                                                                             columnNumber: 33
                                                                                         }, this),
                                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4264,19 +4406,19 @@ function CSVDetailPage({ params }) {
                                                                                             children: "Go to correlation analysis →"
                                                                                         }, void 0, false, {
                                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                            lineNumber: 730,
+                                                                                            lineNumber: 748,
                                                                                             columnNumber: 33
                                                                                         }, this)
                                                                                     ]
                                                                                 }, void 0, true, {
                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                    lineNumber: 726,
+                                                                                    lineNumber: 744,
                                                                                     columnNumber: 31
                                                                                 }, this)
                                                                             ]
                                                                         }, void 0, true, {
                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                            lineNumber: 722,
+                                                                            lineNumber: 740,
                                                                             columnNumber: 29
                                                                         }, this),
                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("li", {
@@ -4288,12 +4430,12 @@ function CSVDetailPage({ params }) {
                                                                                         className: "h-4 w-4 text-green-600"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 742,
+                                                                                        lineNumber: 760,
                                                                                         columnNumber: 31
                                                                                     }, this)
                                                                                 }, void 0, false, {
                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                    lineNumber: 741,
+                                                                                    lineNumber: 759,
                                                                                     columnNumber: 29
                                                                                 }, this),
                                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4304,7 +4446,7 @@ function CSVDetailPage({ params }) {
                                                                                             children: "Create visualizations for specific columns"
                                                                                         }, void 0, false, {
                                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                            lineNumber: 745,
+                                                                                            lineNumber: 763,
                                                                                             columnNumber: 31
                                                                                         }, this),
                                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4313,31 +4455,31 @@ function CSVDetailPage({ params }) {
                                                                                             children: "Go to visualization builder →"
                                                                                         }, void 0, false, {
                                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                            lineNumber: 748,
+                                                                                            lineNumber: 766,
                                                                                             columnNumber: 31
                                                                                         }, this)
                                                                                     ]
                                                                                 }, void 0, true, {
                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                    lineNumber: 744,
+                                                                                    lineNumber: 762,
                                                                                     columnNumber: 29
                                                                                 }, this)
                                                                             ]
                                                                         }, void 0, true, {
                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                            lineNumber: 740,
+                                                                            lineNumber: 758,
                                                                             columnNumber: 27
                                                                         }, this)
                                                                     ]
                                                                 }, void 0, true, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 706,
+                                                                    lineNumber: 724,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 704,
+                                                            lineNumber: 722,
                                                             columnNumber: 23
                                                         }, this),
                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4348,7 +4490,7 @@ function CSVDetailPage({ params }) {
                                                                     children: "Quick Stats"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 760,
+                                                                    lineNumber: 778,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4362,7 +4504,7 @@ function CSVDetailPage({ params }) {
                                                                                         children: "Columns with most missing values"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 765,
+                                                                                        lineNumber: 783,
                                                                                         columnNumber: 33
                                                                                     }, this),
                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4376,7 +4518,7 @@ function CSVDetailPage({ params }) {
                                                                                                             children: col.name
                                                                                                         }, void 0, false, {
                                                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                            lineNumber: 773,
+                                                                                                            lineNumber: 791,
                                                                                                             columnNumber: 41
                                                                                                         }, this),
                                                                                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4391,12 +4533,12 @@ function CSVDetailPage({ params }) {
                                                                                                                         }
                                                                                                                     }, void 0, false, {
                                                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                                        lineNumber: 776,
+                                                                                                                        lineNumber: 794,
                                                                                                                         columnNumber: 45
                                                                                                                     }, this)
                                                                                                                 }, void 0, false, {
                                                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                                    lineNumber: 775,
+                                                                                                                    lineNumber: 793,
                                                                                                                     columnNumber: 43
                                                                                                                 }, this),
                                                                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -4407,19 +4549,19 @@ function CSVDetailPage({ params }) {
                                                                                                                     ]
                                                                                                                 }, void 0, true, {
                                                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                                    lineNumber: 784,
+                                                                                                                    lineNumber: 802,
                                                                                                                     columnNumber: 43
                                                                                                                 }, this)
                                                                                                             ]
                                                                                                         }, void 0, true, {
                                                                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                            lineNumber: 774,
+                                                                                                            lineNumber: 792,
                                                                                                             columnNumber: 41
                                                                                                         }, this)
                                                                                                     ]
                                                                                                 }, col.name, true, {
                                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                    lineNumber: 772,
+                                                                                                    lineNumber: 790,
                                                                                                     columnNumber: 39
                                                                                                 }, this)),
                                                                                             stats.columns.filter((col)=>col.missing > 0).length === 0 && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -4427,19 +4569,19 @@ function CSVDetailPage({ params }) {
                                                                                                 children: "No missing values found"
                                                                                             }, void 0, false, {
                                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                lineNumber: 790,
+                                                                                                lineNumber: 808,
                                                                                                 columnNumber: 37
                                                                                             }, this)
                                                                                         ]
                                                                                     }, void 0, true, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 766,
+                                                                                        lineNumber: 784,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 ]
                                                                             }, void 0, true, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 764,
+                                                                                lineNumber: 782,
                                                                                 columnNumber: 31
                                                                             }, this),
                                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4449,7 +4591,7 @@ function CSVDetailPage({ params }) {
                                                                                         children: "Columns with highest uniqueness"
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 796,
+                                                                                        lineNumber: 814,
                                                                                         columnNumber: 33
                                                                                     }, this),
                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4462,7 +4604,7 @@ function CSVDetailPage({ params }) {
                                                                                                         children: col.name
                                                                                                     }, void 0, false, {
                                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                        lineNumber: 805,
+                                                                                                        lineNumber: 823,
                                                                                                         columnNumber: 41
                                                                                                     }, this),
                                                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4477,12 +4619,12 @@ function CSVDetailPage({ params }) {
                                                                                                                     }
                                                                                                                 }, void 0, false, {
                                                                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                                    lineNumber: 808,
+                                                                                                                    lineNumber: 826,
                                                                                                                     columnNumber: 45
                                                                                                                 }, this)
                                                                                                             }, void 0, false, {
                                                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                                lineNumber: 807,
+                                                                                                                lineNumber: 825,
                                                                                                                 columnNumber: 43
                                                                                                             }, this),
                                                                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -4493,49 +4635,49 @@ function CSVDetailPage({ params }) {
                                                                                                                 ]
                                                                                                             }, void 0, true, {
                                                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                                lineNumber: 813,
+                                                                                                                lineNumber: 831,
                                                                                                                 columnNumber: 43
                                                                                                             }, this)
                                                                                                         ]
                                                                                                     }, void 0, true, {
                                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                        lineNumber: 806,
+                                                                                                        lineNumber: 824,
                                                                                                         columnNumber: 41
                                                                                                     }, this)
                                                                                                 ]
                                                                                             }, col.name, true, {
                                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                                lineNumber: 804,
+                                                                                                lineNumber: 822,
                                                                                                 columnNumber: 39
                                                                                             }, this))
                                                                                     }, void 0, false, {
                                                                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                        lineNumber: 797,
+                                                                                        lineNumber: 815,
                                                                                         columnNumber: 33
                                                                                     }, this)
                                                                                 ]
                                                                             }, void 0, true, {
                                                                                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                                lineNumber: 795,
+                                                                                lineNumber: 813,
                                                                                 columnNumber: 31
                                                                             }, this)
                                                                         ]
                                                                     }, void 0, true)
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                                    lineNumber: 761,
+                                                                    lineNumber: 779,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                            lineNumber: 759,
+                                                            lineNumber: 777,
                                                             columnNumber: 23
                                                         }, this)
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                                    lineNumber: 653,
+                                                    lineNumber: 671,
                                                     columnNumber: 21
                                                 }, this)
                                             ]
@@ -4543,66 +4685,66 @@ function CSVDetailPage({ params }) {
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 559,
+                                    lineNumber: 577,
                                     columnNumber: 15
                                 }, this),
                                 activeTab === 'data' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "p-6",
                                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$DataPreview$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {}, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 834,
+                                        lineNumber: 852,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 833,
+                                    lineNumber: 851,
                                     columnNumber: 15
                                 }, this),
                                 activeTab === 'visualizations' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "p-6",
                                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$ColumnVisualizations$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {}, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 840,
+                                        lineNumber: 858,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 839,
+                                    lineNumber: 857,
                                     columnNumber: 15
                                 }, this),
                                 activeTab === 'correlation' && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
                                     className: "p-6",
                                     children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$components$2f$CorrelationAnalysis$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {}, void 0, false, {
                                         fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                        lineNumber: 846,
+                                        lineNumber: 864,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                                    lineNumber: 845,
+                                    lineNumber: 863,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/src/app/csv/[id]/page.tsx",
-                            lineNumber: 510,
+                            lineNumber: 528,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/src/app/csv/[id]/page.tsx",
-                    lineNumber: 441,
+                    lineNumber: 452,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/src/app/csv/[id]/page.tsx",
-                lineNumber: 440,
+                lineNumber: 451,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/src/app/csv/[id]/page.tsx",
-        lineNumber: 395,
+        lineNumber: 406,
         columnNumber: 5
     }, this);
 }

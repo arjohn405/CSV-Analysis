@@ -36,6 +36,20 @@ export function CSVProvider({ children }: { children: ReactNode }) {
   };
 
   const selectFile = (fileId: string) => {
+    if (!fileId) {
+      console.error("Cannot select file: No file ID provided");
+      return;
+    }
+    
+    // Check if the file ID exists in our files list
+    const fileExists = files.some(file => file.file_id === fileId);
+    
+    if (!fileExists && files.length > 0) {
+      console.warn(`File ID ${fileId} was not found in the current files list. Available files:`, 
+        files.map(f => ({ id: f.file_id, name: f.filename })));
+    }
+    
+    console.log(`Selecting file ID: ${fileId}`);
     setSelectedFileId(fileId);
   };
 

@@ -26,9 +26,15 @@ export default function CorrelationAnalysis() {
 
   useEffect(() => {
     if (selectedFileId) {
-      fetchCorrelationData(selectedFileId);
+      console.log("CorrelationAnalysis: Selected file ID:", selectedFileId);
+      // Add a small delay to ensure context is fully initialized
+      const timer = setTimeout(() => {
+        fetchCorrelationData(selectedFileId);
+      }, 500);
+      return () => clearTimeout(timer);
     } else {
       setCorrelationData(null);
+      console.log("CorrelationAnalysis: No file ID selected");
     }
   }, [selectedFileId]);
 
@@ -36,7 +42,27 @@ export default function CorrelationAnalysis() {
     try {
       setLoading(true);
       setError(null);
+      
+      if (!fileId) {
+        console.error("Cannot fetch correlation data: No file ID provided");
+        setError("No file selected. Please select a CSV file first.");
+        setLoading(false);
+        return;
+      }
+      
+      console.log(`Fetching correlation data for file ID: ${fileId}`);
       const data = await getCorrelation(fileId);
+      console.log("Correlation data received:", data);
+      
+      // Validate correlation data structure
+      if (!data || (!data.correlations && !data.message)) {
+        console.error("Invalid correlation data received:", data);
+        setError("The correlation data received from the server is invalid.");
+        setCorrelationData(null);
+        setLoading(false);
+        return;
+      }
+      
       setCorrelationData(data);
       
       // Extract insights from the correlation data
@@ -47,6 +73,7 @@ export default function CorrelationAnalysis() {
       console.error('Error fetching correlation data:', err);
       const errorMessage = err.userMessage || 
         'Failed to load correlation data. Please ensure the backend server is running.';
+      console.error(`Correlation API error: ${errorMessage}`);
       setError(errorMessage);
       setCorrelationData(null);
     } finally {
@@ -66,73 +93,82 @@ export default function CorrelationAnalysis() {
 
   // Find insights from correlation data
   const findInsights = (correlations: any[]) => {
-    if (!correlations) return [];
+    if (!correlations || !Array.isArray(correlations) || correlations.length === 0) {
+      console.log("No valid correlations data found for insights");
+      return [];
+    }
     
     const insights = [];
     
-    // Filter out self-correlations and get absolute values
-    const filteredCorrelations = correlations
-      .filter(c => c.x !== c.y)
-      .map(c => ({...c, absCorrelation: Math.abs(c.correlation)}));
-    
-    // Find strong correlations (positive and negative)
-    const strongPositiveCorrelations = filteredCorrelations
-      .filter(c => c.correlation > 0.7)
-      .sort((a, b) => b.correlation - a.correlation)
-      .slice(0, 3);
+    try {
+      // Filter out self-correlations and get absolute values
+      const filteredCorrelations = correlations
+        .filter(c => c && c.x && c.y && c.x !== c.y && typeof c.correlation === 'number')
+        .map(c => ({...c, absCorrelation: Math.abs(c.correlation)}));
       
-    const strongNegativeCorrelations = filteredCorrelations
-      .filter(c => c.correlation < -0.7)
-      .sort((a, b) => a.correlation - b.correlation)
-      .slice(0, 3);
-    
-    // Add insights for strong positive correlations
-    if (strongPositiveCorrelations.length > 0) {
-      insights.push({
-        type: 'positive',
-        title: 'Strong Positive Correlations',
-        description: 'These variables tend to increase together:',
-        correlations: strongPositiveCorrelations
-      });
-    }
-    
-    // Add insights for strong negative correlations
-    if (strongNegativeCorrelations.length > 0) {
-      insights.push({
-        type: 'negative',
-        title: 'Strong Negative Correlations', 
-        description: 'As one variable increases, the other tends to decrease:',
-        correlations: strongNegativeCorrelations
-      });
-    }
-    
-    // Find variables with no strong correlations
-    const weaklyCorrelatedVars = new Set<string>();
-    
-    // Extract all unique column names
-    const allColumns = new Set<string>();
-    correlations.forEach(c => {
-      allColumns.add(c.x);
-      allColumns.add(c.y);
-    });
-    
-    // Check each column to see if it has any strong correlations
-    allColumns.forEach(columnName => {
-      const hasStrongCorrelation = filteredCorrelations
-        .some(c => (c.x === columnName || c.y === columnName) && Math.abs(c.correlation) > 0.4);
+      // Find strong correlations (positive and negative)
+      const strongPositiveCorrelations = filteredCorrelations
+        .filter(c => c.correlation > 0.7)
+        .sort((a, b) => b.correlation - a.correlation)
+        .slice(0, 3);
+        
+      const strongNegativeCorrelations = filteredCorrelations
+        .filter(c => c.correlation < -0.7)
+        .sort((a, b) => a.correlation - b.correlation)
+        .slice(0, 3);
       
-      if (!hasStrongCorrelation) {
-        weaklyCorrelatedVars.add(columnName);
+      // Add insights for strong positive correlations
+      if (strongPositiveCorrelations.length > 0) {
+        insights.push({
+          type: 'positive',
+          title: 'Strong Positive Correlations',
+          description: 'These variables tend to increase together:',
+          correlations: strongPositiveCorrelations
+        });
       }
-    });
-    
-    if (weaklyCorrelatedVars.size > 0) {
-      insights.push({
-        type: 'weak',
-        title: 'Independent Variables',
-        description: 'These variables show little correlation with others:',
-        variables: Array.from(weaklyCorrelatedVars)
+      
+      // Add insights for strong negative correlations
+      if (strongNegativeCorrelations.length > 0) {
+        insights.push({
+          type: 'negative',
+          title: 'Strong Negative Correlations', 
+          description: 'As one variable increases, the other tends to decrease:',
+          correlations: strongNegativeCorrelations
+        });
+      }
+      
+      // Find variables with no strong correlations
+      const weaklyCorrelatedVars = new Set<string>();
+      
+      // Extract all unique column names
+      const allColumns = new Set<string>();
+      correlations.forEach(c => {
+        if (c && c.x && c.y) {
+          allColumns.add(c.x);
+          allColumns.add(c.y);
+        }
       });
+      
+      // Check each column to see if it has any strong correlations
+      allColumns.forEach(columnName => {
+        const hasStrongCorrelation = filteredCorrelations
+          .some(c => (c.x === columnName || c.y === columnName) && Math.abs(c.correlation) > 0.4);
+        
+        if (!hasStrongCorrelation) {
+          weaklyCorrelatedVars.add(columnName);
+        }
+      });
+      
+      if (weaklyCorrelatedVars.size > 0) {
+        insights.push({
+          type: 'weak',
+          title: 'Independent Variables',
+          description: 'These variables show little correlation with others:',
+          variables: Array.from(weaklyCorrelatedVars)
+        });
+      }
+    } catch (error) {
+      console.error("Error generating insights:", error);
     }
     
     return insights;
@@ -158,7 +194,7 @@ export default function CorrelationAnalysis() {
           <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Correlation Data</h3>
           <p className="text-red-700 mb-4">{error}</p>
           <button
-            onClick={fetchCorrelationData}
+            onClick={handleRefresh}
             className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 flex items-center"
           >
             <ArrowPathIcon className="h-5 w-5 mr-1" />
@@ -181,6 +217,36 @@ export default function CorrelationAnalysis() {
           <h3 className="font-medium">Correlation Analysis Unavailable</h3>
           <p className="text-sm mt-1">{correlationData.message}</p>
           <p className="text-sm mt-1">Try uploading a CSV file with at least two numerical columns.</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Check if visualization data exists
+  const hasVisualization = correlationData && 
+                          correlationData.visualization && 
+                          correlationData.visualization.data &&
+                          correlationData.visualization.layout;
+  
+  // Check if correlations data exists
+  const hasCorrelations = correlationData && 
+                         Array.isArray(correlationData.correlations) && 
+                         correlationData.correlations.length > 0;
+  
+  if (!hasVisualization || !hasCorrelations) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-100 text-yellow-700 p-4 rounded-md flex items-start">
+        <ExclamationTriangleIcon className="h-5 w-5 mr-2 flex-shrink-0" />
+        <div>
+          <h3 className="font-medium">Correlation Analysis Incomplete</h3>
+          <p className="text-sm mt-1">The correlation data is incomplete or in an incorrect format.</p>
+          <button 
+            onClick={handleRefresh}
+            className="mt-2 inline-flex items-center px-2 py-1 text-xs font-medium rounded text-yellow-700 bg-yellow-100 hover:bg-yellow-200"
+          >
+            <ArrowPathIcon className="h-3 w-3 mr-1" />
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -239,7 +305,16 @@ export default function CorrelationAnalysis() {
                 ...correlationData.visualization.layout,
                 autosize: true,
                 height: 500,
-                margin: { l: 80, r: 20, t: 30, b: 80 }
+                margin: { l: 100, r: 40, t: 40, b: 100 }, // Increased margins to prevent overlap
+                font: { size: 10 }, // Smaller font size for labels
+                xaxis: {
+                  ...correlationData.visualization.layout.xaxis,
+                  tickangle: -45, // Angled labels to prevent overlap
+                },
+                yaxis: {
+                  ...correlationData.visualization.layout.yaxis,
+                  tickangle: 0, // Horizontal labels for y-axis
+                }
               }}
               config={{ 
                 responsive: true,
@@ -304,7 +379,7 @@ export default function CorrelationAnalysis() {
                 <div className="p-4">
                   <p className="text-sm text-gray-600 mb-2">{insight.description}</p>
                   
-                  {insight.correlations && (
+                  {insight.correlations && Array.isArray(insight.correlations) && insight.correlations.length > 0 && (
                     <div className="space-y-2">
                       {insight.correlations.map((corr, i) => (
                         <div key={i} className="bg-white rounded-md border border-gray-100 p-2 text-sm">
@@ -315,7 +390,7 @@ export default function CorrelationAnalysis() {
                                 ? 'bg-green-100 text-green-800' 
                                 : 'bg-red-100 text-red-800'
                             }`}>
-                              {corr.correlation.toFixed(2)}
+                              {typeof corr.correlation === 'number' ? corr.correlation.toFixed(2) : 'N/A'}
                             </span>
                           </div>
                         </div>
@@ -323,7 +398,7 @@ export default function CorrelationAnalysis() {
                     </div>
                   )}
                   
-                  {insight.variables && (
+                  {insight.variables && Array.isArray(insight.variables) && insight.variables.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {insight.variables.map((variable, i) => (
                         <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
@@ -371,7 +446,7 @@ export default function CorrelationAnalysis() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {correlationData.correlations
-                .filter(c => c.x !== c.y) // Remove self-correlations
+                .filter(c => c && c.x && c.y && c.x !== c.y && typeof c.correlation === 'number') // Remove invalid or self-correlations
                 .sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation)) // Sort by absolute value
                 .slice(0, 8) // Take top 8
                 .map((corr, index) => (

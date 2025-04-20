@@ -119,8 +119,19 @@ const getColumnVisualization = async (fileId, column)=>{
 };
 const getCorrelation = async (fileId)=>{
     return apiRequest(async ()=>{
-        const response = await api.get(`/files/${fileId}/correlation`);
-        return response.data;
+        if (!fileId) {
+            throw new Error('File ID is required for correlation analysis');
+        }
+        // Log the request URL for debugging
+        const requestUrl = `${API_URL}/files/${fileId}/correlation`;
+        console.log(`Making correlation request to: ${requestUrl}`);
+        try {
+            const response = await api.get(requestUrl);
+            return response.data;
+        } catch (error) {
+            console.error(`Correlation request failed for file ID: ${fileId}`, error);
+            throw error;
+        }
     });
 };
 const __TURBOPACK__default__export__ = api;
@@ -166,6 +177,19 @@ function CSVProvider({ children }) {
         }
     };
     const selectFile = (fileId)=>{
+        if (!fileId) {
+            console.error("Cannot select file: No file ID provided");
+            return;
+        }
+        // Check if the file ID exists in our files list
+        const fileExists = files.some((file)=>file.file_id === fileId);
+        if (!fileExists && files.length > 0) {
+            console.warn(`File ID ${fileId} was not found in the current files list. Available files:`, files.map((f)=>({
+                    id: f.file_id,
+                    name: f.filename
+                })));
+        }
+        console.log(`Selecting file ID: ${fileId}`);
         setSelectedFileId(fileId);
     };
     const clearSelectedFile = ()=>{
@@ -189,7 +213,7 @@ function CSVProvider({ children }) {
         children: children
     }, void 0, false, {
         fileName: "[project]/src/context/CSVContext.tsx",
-        lineNumber: 51,
+        lineNumber: 65,
         columnNumber: 5
     }, this);
 }

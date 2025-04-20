@@ -182,8 +182,21 @@ export const getColumnVisualization = async (fileId: string, column: string): Pr
 // Get correlation data
 export const getCorrelation = async (fileId: string): Promise<CorrelationData> => {
   return apiRequest(async () => {
-    const response = await api.get(`/files/${fileId}/correlation`);
-    return response.data;
+    if (!fileId) {
+      throw new Error('File ID is required for correlation analysis');
+    }
+    
+    // Log the request URL for debugging
+    const requestUrl = `${API_URL}/files/${fileId}/correlation`;
+    console.log(`Making correlation request to: ${requestUrl}`);
+    
+    try {
+      const response = await api.get(requestUrl);
+      return response.data;
+    } catch (error) {
+      console.error(`Correlation request failed for file ID: ${fileId}`, error);
+      throw error;
+    }
   });
 };
 

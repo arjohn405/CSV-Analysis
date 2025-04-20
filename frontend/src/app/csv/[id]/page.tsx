@@ -30,7 +30,8 @@ import {
   ChevronDownIcon,
   ArrowsPointingOutIcon,
   ArrowPathIcon,
-  ViewColumnsIcon
+  ViewColumnsIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { getFileStats, getFileMetadata } from '@/services/api';
 
@@ -68,8 +69,18 @@ export default function CSVDetailPage({ params }: { params: { id: string } }) {
     setUserName(names[Math.floor(Math.random() * names.length)]);
     
     // Set selected file ID based on the URL param
-    if (fileId && fileId !== selectedFileId) {
-      selectFile(fileId);
+    if (fileId) {
+      console.log(`CSV Detail Page: Setting file ID from URL parameter: ${fileId}`);
+      
+      // Check if fileId is different from currently selected file
+      if (fileId !== selectedFileId) {
+        console.log(`CSV Detail Page: Updating selected file ID from ${selectedFileId} to ${fileId}`);
+        selectFile(fileId);
+      } else {
+        console.log(`CSV Detail Page: File ID ${fileId} already selected`);
+      }
+    } else {
+      console.error("CSV Detail Page: No file ID in URL parameters");
     }
   }, [fileId, router, selectFile, selectedFileId]);
 
@@ -451,7 +462,9 @@ export default function CSVDetailPage({ params }: { params: { id: string } }) {
               </Link>
               <div className="flex items-center">
                 <DocumentTextIcon className="h-6 w-6 text-blue-600 mr-2" />
-                <h1 className="text-2xl font-bold text-gray-900">{fileDetails.filename}</h1>
+                <h1 className="text-2xl font-bold text-gray-900 truncate max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg" title={fileDetails.filename}>
+                  {fileDetails.filename}
+                </h1>
               </div>
             </div>
             <div className="flex space-x-2">
@@ -479,27 +492,32 @@ export default function CSVDetailPage({ params }: { params: { id: string } }) {
               </div>
             </div>
             <div className="p-5">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
                 <div>
                   <div className="text-sm font-medium text-gray-500">File Name</div>
-                  <div className="mt-1 text-sm text-gray-900">{fileDetails.filename}</div>
+                  <div className="mt-1 text-sm text-gray-900 truncate" title={fileDetails.filename}>
+                    {fileDetails.filename}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm font-medium text-gray-500">Upload Date</div>
-                  <div className="mt-1 text-sm text-gray-900 flex items-center">
-                    <ClockIcon className="h-4 w-4 mr-1 text-gray-400" />
-                    {formatDate(fileDetails.upload_time)}
+                  <div className="mt-1 text-sm text-gray-900 flex items-center truncate" title={formatDate(fileDetails.upload_time)}>
+                    <ClockIcon className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400" />
+                    <span className="truncate">{formatDate(fileDetails.upload_time)}</span>
                   </div>
                 </div>
                 <div>
                   <div className="text-sm font-medium text-gray-500">File Size</div>
-                  <div className="mt-1 text-sm text-gray-900">{fileDetails.size}</div>
+                  <div className="mt-1 text-sm text-gray-900 truncate" title={fileDetails.size}>
+                    {fileDetails.size}
+                  </div>
                 </div>
                 <div>
                   <div className="text-sm font-medium text-gray-500">Dimensions</div>
-                  <div className="mt-1 text-sm text-gray-900 flex items-center">
-                    <ViewColumnsIcon className="h-4 w-4 mr-1 text-gray-400" />
-                    {fileDetails.row_count.toLocaleString()} rows × {fileDetails.column_count} columns
+                  <div className="mt-1 text-sm text-gray-900 flex items-center truncate" 
+                       title={`${fileDetails.row_count.toLocaleString()} rows × ${fileDetails.column_count} columns`}>
+                    <ViewColumnsIcon className="h-4 w-4 mr-1 flex-shrink-0 text-gray-400" />
+                    <span className="truncate">{fileDetails.row_count.toLocaleString()} rows × {fileDetails.column_count} columns</span>
                   </div>
                 </div>
               </div>
