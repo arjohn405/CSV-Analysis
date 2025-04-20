@@ -14,6 +14,19 @@ import plotly.io as pio
 import plotly.utils as plt_utils
 from pydantic import BaseModel
 
+# Create a custom JSON encoder to handle numpy types
+class NumpyJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        return super().default(obj)
+
 # Create uploads directory if it doesn't exist
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("upload_history", exist_ok=True)
@@ -25,7 +38,8 @@ if not os.path.exists(HISTORY_FILE):
     with open(HISTORY_FILE, "w") as f:
         json.dump([], f)
 
-app = FastAPI(title="CSV Analytics API")
+app = FastAPI(title="CSV Analytics API", 
+              json_encoder=NumpyJSONEncoder)  # Use custom JSON encoder
 
 # Configure CORS
 app.add_middleware(
@@ -217,10 +231,10 @@ async def get_file_stats(file_id: str):
             stats = {"name": col, "dtype": str(df[col].dtype)}
             
             # Common stats for all columns
-            stats["count"] = df[col].count()
-            stats["missing"] = df[col].isna().sum()
-            stats["missing_pct"] = (stats["missing"] / len(df)) * 100
-            stats["unique"] = df[col].nunique()
+            stats["count"] = int(df[col].count())
+            stats["missing"] = int(df[col].isna().sum())
+            stats["missing_pct"] = float((stats["missing"] / len(df)) * 100)
+            stats["unique"] = int(df[col].nunique())
             
             # Numeric stats
             if pd.api.types.is_numeric_dtype(df[col]):
@@ -322,6 +336,7 @@ async def get_correlation(file_id: str):
         corr_data = []
         for i, row in enumerate(corr_matrix.values):
             for j, val in enumerate(row):
+                # Explicitly convert numpy values to Python native types
                 corr_data.append({
                     "x": numerical_cols[j],
                     "y": numerical_cols[i],
@@ -337,6 +352,7 @@ async def get_correlation(file_id: str):
             labels=dict(color="Correlation"),
             text_auto=True
         )
+        # Use the custom encoder for the plotly JSON
         heatmap_json = json.loads(pio.to_json(fig))
         
         return {
