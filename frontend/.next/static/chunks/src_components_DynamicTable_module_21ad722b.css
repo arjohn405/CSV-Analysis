@@ -1,0 +1,185 @@
+/* [project]/src/components/DynamicTable.module.css [app-client] (css) */
+.DynamicTable-module__GM5-nG__tableContainer {
+  -webkit-overflow-scrolling: touch;
+  border-radius: .5rem;
+  width: 100%;
+  position: relative;
+  overflow-x: auto;
+}
+
+.DynamicTable-module__GM5-nG__table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.DynamicTable-module__GM5-nG__tableHeader {
+  z-index: 10;
+  background-color: #f9fafb;
+  transition: background-color .2s;
+  position: sticky;
+  top: 0;
+  box-shadow: 0 1px 2px #0000000d;
+}
+
+.DynamicTable-module__GM5-nG__tableHeaderCell {
+  text-align: left;
+  text-transform: uppercase;
+  color: #6b7280;
+  letter-spacing: .05em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: .75rem 1rem;
+  font-size: .75rem;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.DynamicTable-module__GM5-nG__tableHeaderCell:hover {
+  background-color: #f3f4f6;
+}
+
+.DynamicTable-module__GM5-nG__sortable {
+  cursor: pointer;
+}
+
+.DynamicTable-module__GM5-nG__sortIcon {
+  transition: transform .2s, opacity .2s;
+}
+
+.DynamicTable-module__GM5-nG__resizeHandle {
+  cursor: col-resize;
+  z-index: 1;
+  width: 5px;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.DynamicTable-module__GM5-nG__resizeHandle:after {
+  content: "";
+  opacity: 0;
+  background-color: #e5e7eb;
+  width: 1px;
+  height: 100%;
+  transition: opacity .2s, background-color .2s;
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.DynamicTable-module__GM5-nG__resizeHandle:hover:after, .DynamicTable-module__GM5-nG__resizeHandleActive:after {
+  opacity: 1;
+  background-color: #3b82f6;
+}
+
+.DynamicTable-module__GM5-nG__tableRow {
+  transition: background-color .2s;
+}
+
+.DynamicTable-module__GM5-nG__tableRow:hover {
+  background-color: #f9fafb;
+}
+
+.DynamicTable-module__GM5-nG__tableRowClickable {
+  cursor: pointer;
+}
+
+.DynamicTable-module__GM5-nG__tableRowHighlighted {
+  background-color: #eff6ff;
+}
+
+.DynamicTable-module__GM5-nG__tableRowHighlighted:hover {
+  background-color: #dbeafe;
+}
+
+.DynamicTable-module__GM5-nG__tableCell {
+  color: #374151;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem;
+  font-size: .875rem;
+  overflow: hidden;
+}
+
+.DynamicTable-module__GM5-nG__loadingContainer {
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 200px;
+  display: flex;
+}
+
+.DynamicTable-module__GM5-nG__spinner {
+  border: 2px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  animation: 1s linear infinite DynamicTable-module__GM5-nG__spin;
+}
+
+.DynamicTable-module__GM5-nG__emptyContainer {
+  color: #6b7280;
+  text-align: center;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 200px;
+  display: flex;
+}
+
+@keyframes DynamicTable-module__GM5-nG__spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (width <= 1024px) {
+  .DynamicTable-module__GM5-nG__tableContainer {
+    border-radius: .25rem;
+  }
+
+  .DynamicTable-module__GM5-nG__table {
+    min-width: 100%;
+  }
+}
+
+@media (width <= 768px) {
+  .DynamicTable-module__GM5-nG__tableHeaderCell, .DynamicTable-module__GM5-nG__tableCell {
+    padding: .75rem .5rem;
+    font-size: .75rem;
+  }
+
+  .DynamicTable-module__GM5-nG__tableContainer {
+    border-radius: 0;
+    width: calc(100% + 2rem);
+    margin: 0 -1rem;
+  }
+
+  .DynamicTable-module__GM5-nG__tableContainer:after {
+    content: "";
+    pointer-events: none;
+    background: linear-gradient(to right, #fff0, #ffffff4d);
+    width: 20px;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+}
+
+@media (width <= 640px) {
+  .DynamicTable-module__GM5-nG__tableHeaderCell, .DynamicTable-module__GM5-nG__tableCell {
+    padding: .5rem .25rem;
+    font-size: .7rem;
+  }
+}
+
+
+/*# sourceMappingURL=src_components_DynamicTable_module_21ad722b.css.map*/

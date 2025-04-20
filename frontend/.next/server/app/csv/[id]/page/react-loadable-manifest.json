@@ -1,0 +1,10 @@
+{
+  "[project]/node_modules/react-plotly.js/react-plotly.js [app-client] (ecmascript, next/dynamic entry)": {
+    "id": "[project]/node_modules/react-plotly.js/react-plotly.js [app-client] (ecmascript, next/dynamic entry)",
+    "files": [
+      "static/chunks/node_modules_plotly_js_dist_plotly_26e3ab27.js",
+      "static/chunks/node_modules_dc563004._.js",
+      "static/chunks/node_modules_react-plotly_js_react-plotly_9d231ad9.js"
+    ]
+  }
+}
